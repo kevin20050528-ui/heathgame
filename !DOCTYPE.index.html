@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>健康小學堂 - 互動測驗遊戲</title>
+    <style>
+        :root {
+            --primary-color: #2ecc71;
+            --secondary-color: #3498db;
+            --bg-color: #f8f9fa;
+            --card-bg: #ffffff;
+        }
+
+        body {
+            font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .game-container {
+            background: var(--card-bg);
+            width: 90%;
+            max-width: 450px;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        /* 進度條與資訊 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            font-weight: bold;
+            color: #666;
+        }
+
+        .progress-container {
+            height: 8px;
+            background: #eee;
+            border-radius: 4px;
+            margin-bottom: 30px;
+            overflow: hidden;
+        }
+
+        #progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            width: 0%;
+            transition: width 0.4s ease;
+        }
+
+        /* 題目顯示 */
+        .question-box {
+            font-size: 1.3rem;
+            margin-bottom: 25px;
+            color: #2c3e50;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 按鈕樣式 */
+        .options-grid {
+            display: grid;
+            gap: 12px;
+        }
+
+        .option-btn {
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            background: white;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #444;
+        }
+
+        .option-btn:hover {
+            border-color: var(--secondary-color);
+            background: #f0f7ff;
+            transform: translateY(-2px);
+        }
+
+        .option-btn.correct {
+            background-color: #d4edda;
+            border-color: #28a745;
+            color: #155724;
+        }
+
+        .option-btn.wrong {
+            background-color: #f8d7da;
+            border-color: #dc3545;
+            color: #721c24;
+        }
+
+        /* 結果頁面 */
+        .result-screen {
+            display: none;
+        }
+
+        .score-circle {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            margin: 20px auto;
+            font-size: 2rem;
+            font-weight: bold;
+        }
+
+        .restart-btn {
+            margin-top: 20px;
+            padding: 12px 30px;
+            background: var(--secondary-color);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body>
+
+<div class="game-container">
+    <div id="quiz-ui">
+        <div class="header">
+            <span id="question-number">第 1 題</span>
+            <span id="timer">⏳ 剩餘 10s</span>
+        </div>
+        <div class="progress-container">
+            <div id="progress-bar"></div>
+        </div>
+        <div class="question-box" id="question-text">
+            正在準備健康關卡...
+        </div>
+        <div class="options-grid" id="options-container">
+            </div>
+    </div>
+
+    <div id="result-ui" class="result-screen">
+        <h2 id="result-title">測驗結束！</h2>
+        <div class="score-circle">
+            <span id="final-score">0</span>
+            <small style="font-size: 0.8rem">分</small>
+        </div>
+        <p id="result-msg">做得好！保持健康的生活習慣！</p>
+        <button class="restart-btn" onclick="startGame()">再挑戰一次</button>
+    </div>
+</div>
+
+<script>
+    const quizData = [
+        {
+            q: "下列哪一種行為最能有效預防流感？",
+            a: ["不喝冰水", "勤洗手、戴口罩", "多吃炸雞", "不運動"],
+            correct: 1
+        },
+        {
+            q: "「天天五蔬果」的具體內容是什麼？",
+            a: ["每天吃5種水果", "每天吃5塊肉", "3份蔬菜 + 2份水果", "5天吃一次蔬菜"],
+            correct: 2
+        },
+        {
+            q: "長時間使用電腦，建議每隔多久應休息一下？",
+            a: ["10分鐘", "30分鐘", "4小時", "等眼睛痛再休息"],
+            correct: 1
+        },
+        {
+            q: "成人每日建議步行步數約為多少？",
+            a: ["100步", "1000步", "7000~10000步", "只要有走動就好"],
+            correct: 2
+        },
+        {
+            q: "下列何者是優質的蛋白質來源？",
+            a: ["珍珠奶茶", "豆製品與魚類", "洋芋片", "白砂糖"],
+            correct: 1
+        }
+    ];
+
+    let currentIdx = 0;
+    let score = 0;
+    let timeLeft = 10;
+    let timerInterval;
+
+    function startGame() {
+        currentIdx = 0;
+        score = 0;
+        document.getElementById('quiz-ui').style.display = 'block';
+        document.getElementById('result-ui').style.display = 'none';
+        showQuestion();
+    }
+
+    function showQuestion() {
+        clearInterval(timerInterval);
+        timeLeft = 10;
+        updateTimerText();
+       
+        const currentQuiz = quizData[currentIdx];
+        document.getElementById('question-number').innerText = `第 ${currentIdx + 1} / ${quizData.length} 題`;
+        document.getElementById('question-text').innerText = currentQuiz.q;
+        document.getElementById('progress-bar').style.width = `${((currentIdx) / quizData.length) * 100}%`;
+       
+        const container = document.getElementById('options-container');
+        container.innerHTML = '';
+       
+        currentQuiz.a.forEach((option, i) => {
+            const btn = document.createElement('button');
+            btn.className = 'option-btn';
+            btn.innerText = option;
+            btn.onclick = () => selectAnswer(i);
+            container.appendChild(btn);
+        });
+
+        startTimer();
+    }
+
+    function startTimer() {
+        timerInterval = setInterval(() => {
+            timeLeft--;
+            updateTimerText();
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                selectAnswer(-1); // 時間到，當作答錯
+            }
+        }, 1000);
+    }
+
+    function updateTimerText() {
+        document.getElementById('timer').innerText = `⏳ 剩餘 ${timeLeft}s`;
+    }
+
+    function selectAnswer(index) {
+        clearInterval(timerInterval);
+        const btns = document.querySelectorAll('.option-btn');
+        const correctIdx = quizData[currentIdx].correct;
+
+        // 禁用所有按鈕防止重複點擊
+        btns.forEach(btn => btn.disabled = true);
+
+        if (index === correctIdx) {
+            btns[index].classList.add('correct');
+            score += Math.round(100 / quizData.length);
+        } else if (index !== -1) {
+            btns[index].classList.add('wrong');
+            btns[correctIdx].classList.add('correct');
+        } else {
+            btns[correctIdx].classList.add('correct');
+        }
+
+        setTimeout(() => {
+            currentIdx++;
+            if (currentIdx < quizData.length) {
+                showQuestion();
+            } else {
+                showResult();
+            }
+        }, 1200);
+    }
+
+    function showResult() {
+        document.getElementById('quiz-ui').style.display = 'none';
+        document.getElementById('result-ui').style.display = 'block';
+        document.getElementById('final-score').innerText = score;
+       
+        let msg = "";
+        if(score >= 80) msg = "太優秀了！你是健康達人！";
+        else if(score >= 60) msg = "表現不錯，再細心一點會更好！";
+        else msg = "別氣餒，多閱讀健康小知識吧！";
+        document.getElementById('result-msg').innerText = msg;
+    }
+
+    // 啟動遊戲
+    startGame();
+</script>
+
+</body>
+</html>
