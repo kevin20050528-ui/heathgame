@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>預防醫學：健康極速挑戰 (穩定駕駛版)</title>
+<style>
+:root { 
+    --road-grey: #334155; 
+    --line-yellow: #FDE047; 
+    --danger: #F43F5E; 
+    --success: #10B981;
+}
+
+body { 
+    font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; 
+    background: #0F172A; margin: 0; overflow: hidden; color: white; 
+    display: flex; justify-content: center; align-items: center; height: 100vh; 
+}
+
+.game-app { 
+    width: 100%; max-width: 480px; height: 100vh; 
+    background: #1E293B; position: relative; display: flex; flex-direction: column; 
+    border: 4px solid #475569; box-shadow: 0 0 50px rgba(0,0,0,0.5);
+}
+
+/* 儀表板 */
+.hud { 
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; 
+    padding: 15px; background: #0F172A; border-bottom: 2px solid #334155;
+}
+.gauge { background: #1E293B; padding: 8px; border-radius: 8px; text-align: center; }
+.gauge-l { font-size: 0.7rem; color: #94A3B8; margin-bottom: 2px; }
+.gauge-v { font-size: 1.1rem; font-weight: bold; color: #6EE7B7; }
+
+/* 題目區 */
+.q-box { 
+    background: rgba(15, 23, 42, 0.95); padding: 20px; text-align: center; 
+    font-size: 1.1rem; font-weight: bold; min-height: 80px; 
+    display: flex; align-items: center; justify-content: center; 
+    border-bottom: 5px solid #3B82F6; line-height: 1.4;
+}
+
+/* 賽道 - 拉長視覺感 */
+.road-canvas { 
+    flex: 1; background: var(--road-grey); position: relative; overflow: hidden; 
+    perspective: 500px; /* 增加透視感 */
+}
+.road-stripes { 
+    position: absolute; width: 8px; height: 200%; left: calc(50% - 4px); top: -100%;
+    background: repeating-linear-gradient(to bottom, transparent 0, transparent 60px, var(--line-yellow) 60px, var(--line-yellow) 120px);
+    animation: moveRoad 1.5s linear infinite; /* 減慢動畫速度 */
+}
+@keyframes moveRoad { from { transform: translateY(0); } to { transform: translateY(120px); } }
+
+#car { 
+    position: absolute; bottom: 60px; font-size: 4rem; width: 33.3%; 
+    text-align: center; transition: left 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+    z-index: 200; filter: drop-shadow(0 10px 5px rgba(0,0,0,0.3));
+}
+
+.ans-gate { 
+    position: absolute; width: 30%; height: 90px; margin: 0 1.6%;
+    display: flex; align-items: center; justify-content: center; 
+    background: rgba(30, 41, 59, 0.9); border: 3px solid #475569; 
+    border-radius: 12px; font-size: 0.95rem; padding: 10px; 
+    box-sizing: border-box; text-align: center; color: #F8FAFC;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+}
+
+/* 排行榜與覆蓋層 */
+.overlay { 
+    position: absolute; inset: 0; background: rgba(15, 23, 42, 0.95); 
+    display: none; flex-direction: column; align-items: center; justify-content: center; 
+    padding: 30px; z-index: 500; text-align: center;
+}
+.rank-list { 
+    width: 100%; background: #0F172A; border-radius: 10px; 
+    padding: 15px; margin: 20px 0; max-height: 200px; overflow-y: auto;
+}
+.rank-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1E293B; }
+
+.btn { 
+    padding: 12px 30px; cursor: pointer; border-radius: 50px; border: none; 
+    background: #3B82F6; color: white; font-weight: bold; font-size: 1rem;
+}
+
+.wrong-flash { animation: shake 0.4s; background: #7F1D1D !important; }
+@keyframes shake { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+</style>
+</head>
+<body>
+
+<div class="game-app" id="game-app">
+    <div class="hud">
+        <div class="gauge"><div class="gauge-l">關卡</div><div class="gauge-v" id="ui-lv">1/3</div></div>
+        <div class="gauge"><div class="gauge-l">燃料(秒)</div><div class="gauge-v" id="ui-tm">60</div></div>
+        <div class="gauge"><div class="gauge-l">累積里程</div><div class="gauge-v" id="ui-sc">0</div></div>
+    </div>
+    
+    <div class="q-box" id="q-text">準備好開始挑戰嗎？</div>
+
+    <div class="road-canvas">
+        <div class="road-stripes" id="stripes"></div>
+        <div id="car">🏎️</div>
+    </div>
+
+    <!-- 關卡過場/結束 -->
+    <div id="msg-ui" class="overlay" style="display: flex;">
+        <h2 id="msg-title">健康極速挑戰</h2>
+        <p id="msg-desc">按「開始駕駛」按鈕啟動關卡</p>
+        <button class="btn" id="start-btn" onclick="startStage()">開始駕駛</button>
+        
+        <div id="rank-section" style="display: none; width: 100%;">
+            <div class="rank-list" id="rank-content"></div>
+            <input type="text" id="player-name" placeholder="輸入你的大名" maxlength="10" style="padding:10px; border-radius:5px; margin-bottom:10px;">
+            <br>
+            <button class="btn" onclick="saveScore()" style="background:var(--success)">儲存成績</button>
+            <button class="btn" onclick="location.reload()" style="background:#475569">重新遊戲</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// 完整題庫數據
+const STAGES = [
+    { lvName: "基礎保健", speed: 2.8, fuel: 60, penalty: 5, qs: [
+        {q:"勤洗手可預防哪種疾病？", a:["近視", "腸病毒", "過敏"], c:1},
+        {q:"用眼多久應休息10分鐘？", a:["30分鐘", "60分鐘", "90分鐘"], c:0},
+        {q:"「天天五蔬果」建議？", a:["3蔬2果", "5份水果", "只吃蔬菜"], c:0},
+        {q:"洗手正確步驟的第一步？", a:["搓", "沖", "濕"], c:2},
+        {q:"下列哪種飲品最健康？", a:["珍珠奶茶", "純水", "運動飲料"], c:1},
+        {q:"預防蛀牙應攝取？", a:["精緻糖", "氟化物", "碳酸飲料"], c:1},
+        {q:"打噴嚏時應遮住？", a:["口鼻", "眼睛", "耳朵"], c:0},
+        {q:"早餐最建議包含？", a:["全穀雜糧", "油條", "大腸包小腸"], c:0},
+        {q:"青少年建議睡眠？", a:["4小時", "8小時", "12小時"], c:1},
+        {q:"哪種運動是帶氧運動？", a:["快走", "舉重", "下棋"], c:0},
+        {q:"維生素C豐富的水果？", a:["芭樂", "榴槤", "葡萄"], c:0},
+        {q:"飯前洗手是為了？", a:["病從口入", "美白", "手癢"], c:0},
+        {q:"哪種油脂對心血管較好？", a:["豬油", "橄欖油", "奶油"], c:1},
+        {q:"運動前應先？", a:["飽餐一頓", "熱身", "喝冰水"], c:1},
+        {q:"成人每日建議飲水？", a:["1000ml", "2000ml", "5000ml"], c:1},
+        {q:"預防近視要多看？", a:["手機", "遠方綠色", "白色牆壁"], c:1},
+        {q:"哪種調味料攝取過多會水腫？", a:["鹽", "醋", "胡椒"], c:0},
+        {q:"健康體位的指標是？", a:["腰圍", "鞋號", "食量"], c:0},
+        {q:"下列何者含鈣量高？", a:["牛奶", "白飯", "豬肉"], c:0},
+        {q:"久坐多久該起身？", a:["30分", "3小時", "都不用"], c:0}
+    ]},
+    { lvName: "代謝風險", speed: 3.8, fuel: 55, penalty: 8, qs: [
+        {q:"BMI 正常範圍是？", a:["15-18", "18.5-24", "27-30"], c:1},
+        {q:"代謝症候群標準中男性腰圍？", a:["80cm", "90cm", "100cm"], c:1},
+        {q:"好的膽固醇是指？", a:["HDL", "LDL", "TG"], c:0},
+        {q:"高血壓口訣「得舒飲食」？", a:["DASH", "CASH", "FAST"], c:0},
+        {q:"成人每日鈉攝取上限？", a:["1200mg", "2400mg", "5000mg"], c:1},
+        {q:"糖尿病前期指標血糖值？", a:["100-125", "140-199", "200以上"], c:0},
+        {q:"骨質疏鬆與哪種維生素有關？", a:["維生素A", "維生素D", "維生素K"], c:1},
+        {q:"二手菸會增加哪種病風險？", a:["心血管病", "香港腳", "腸胃炎"], c:0},
+        {q:"判斷腹部肥胖用？", a:["身高", "腰圍", "大腿圍"], c:1},
+        {q:"全穀類建議佔主食比例？", a:["1/10", "1/5", "1/3以上"], c:2},
+        {q:"長期壓力會導致？", a:["皮質醇過高", "視力上升", "體重下降"], c:0},
+        {q:"哪種運動對強化骨質較佳？", a:["游泳", "負重運動", "睡覺"], c:1},
+        {q:"反式脂肪常見於？", a:["天然蔬果", "油炸與糕點", "水煮肉"], c:1},
+        {q:"壞膽固醇是指？", a:["HDL", "LDL", "蛋白質"], c:1},
+        {q:"哪種人易患肌少症？", a:["兒童", "運動員", "高齡長者"], c:2},
+        {q:"空腹血糖正常應低於？", a:["100", "150", "200"], c:0},
+        {q:"預防大腸癌應多吃？", a:["紅肉", "膳食纖維", "泡麵"], c:1},
+        {q:"下列何者是隱形殺手？", a:["感冒", "高血壓", "骨折"], c:1},
+        {q:"深海魚含有豐富的？", a:["Omega-3", "糖分", "膳食纖維"], c:0},
+        {q:"運動時胸悶應立即？", a:["加速", "停止休息", "憋氣"], c:1}
+    ]},
+    { lvName: "臨床警訊", speed: 5.0, fuel: 50, penalty: 10, qs: [
+        {q:"中風口訣 FAST 的 A 是？", a:["發燒", "手臂無力", "肚子痛"], c:1},
+        {q:"HbA1c 是指？", a:["血紅素", "糖化血色素", "血小板"], c:1},
+        {q:"AED 功能是？", a:["人工呼吸", "電擊心律", "量血壓"], c:1},
+        {q:"心肌梗塞常見徵兆？", a:["牙癢", "胸口壓迫痛", "流鼻血"], c:1},
+        {q:"中風口訣 FAST 的 S 是？", a:["流汗", "言語不清", "失眠"], c:1},
+        {q:"正常收縮壓應低於？", a:["120", "140", "160"], c:0},
+        {q:"乳癌篩檢利器是？", a:["超音波", "乳房攝影", "觸摸"], c:1},
+        {q:"子宮頸癌預防工具？", a:["抹片檢查", "驗尿", "照X光"], c:0},
+        {q:"何種維生素有助凝血？", a:["A", "K", "E"], c:1},
+        {q:"胰島素是由哪裡分泌？", a:["肝臟", "胰臟", "胃"], c:1},
+        {q:"痛風與哪種物質過高有關？", a:["血糖", "尿酸", "血脂"], c:1},
+        {q:"流感疫苗主要預防？", a:["普通感冒", "流感併發症", "皮膚癢"], c:1},
+        {q:"慢性腎臟病應限制？", a:["膳食纖維", "蛋白質與鈉", "水"], c:1},
+        {q:"心血管疾病首要危險因子？", a:["抽菸", "喝水", "走路"], c:0},
+        {q:"肺癌篩檢目前建議用？", a:["胸部X光", "低劑量電腦斷層", "抽血"], c:1},
+        {q:"預防 B 型肝炎主要靠？", a:["疫苗接種", "多睡覺", "吃補藥"], c:0},
+        {q:"所謂「三高」不包括？", a:["高血壓", "高血糖", "高尿酸"], c:2},
+        {q:"中風口訣 FAST 的 T 是？", a:["口渴", "爭取時間", "體溫"], c:1},
+        {q:"成人健檢幾歲開始免費提供？", a:["40歲", "50歲", "65歲"], c:0},
+        {q:"洗腎最常見的原因？", a:["過敏", "糖尿病", "感冒"], c:1}
+    ]}
+];
+
+let curLv = 0;
+let pool = [];
+let state = { sc: 0, tm: 60, active: false, lane: 1 };
+let gates = [];
+let clock;
+
+const car = document.getElementById('car');
+const qText = document.getElementById('q-text');
+
+// 初始化關卡
+function startStage() {
+    document.getElementById('msg-ui').style.display = 'none';
+    const stage = STAGES[curLv];
+    pool = [...stage.qs].sort(() => Math.random() - 0.5); // 隨機出題
+    state.tm = stage.fuel;
+    state.active = true;
+    
+    document.getElementById('ui-lv').innerText = `${curLv + 1}/3`;
+    document.getElementById('ui-tm').innerText = state.tm;
+    
+    // 背景動畫速度跟隨難度
+    document.getElementById('stripes').style.animationDuration = (3 / stage.speed) + 's';
+
+    clearInterval(clock);
+    clock = setInterval(() => {
+        state.tm--;
+        document.getElementById('ui-tm').innerText = state.tm;
+        if(state.tm <= 0) checkNext();
+    }, 1000);
+
+    spawnGates();
+    gameLoop();
+}
+
+function spawnGates() {
+    if(pool.length === 0) { checkNext(); return; } 
+    const q = pool.pop(); // 確保不重複
+    qText.innerText = q.q;
+    
+    for(let i=0; i<3; i++) {
+        const g = document.createElement('div');
+        g.className = 'ans-gate';
+        g.style.left = (i * 33.3) + '%';
+        g.style.top = '-150px'; // 拉長距離
+        g.innerText = q.a[i];
+        document.querySelector('.road-canvas').appendChild(g);
+        gates.push({ el: g, isCorrect: i === q.c, hit: false });
+    }
+}
+
+function gameLoop() {
+    if(!state.active) return;
+    const stage = STAGES[curLv];
+    
+    gates.forEach((gate, idx) => {
+        let top = parseFloat(gate.el.style.top);
+        top += stage.speed;
+        gate.el.style.top = top + 'px';
+
+        const carTop = document.querySelector('.road-canvas').offsetHeight - 140;
+        if(!gate.hit && top > carTop && top < carTop + 100) {
+            if(state.lane === Math.floor(parseFloat(gate.el.style.left)/33)) {
+                gate.hit = true;
+                handleResult(gate.isCorrect);
+            }
+        }
+        
+        if(top > 1000) { 
+            gate.el.remove(); 
+            gates.splice(idx, 1); 
+            if(gates.length === 0 && state.active) spawnGates(); 
+        }
+    });
+    requestAnimationFrame(gameLoop);
+}
+
+function handleResult(isCorrect) {
+    if(isCorrect) {
+        state.sc += 50; 
+    } else {
+        const stage = STAGES[curLv];
+        state.sc = Math.max(0, state.sc - 20); // 扣分
+        state.tm = Math.max(0, state.tm - stage.penalty); // 扣時
+        document.getElementById('game-app').classList.add('wrong-flash');
+        setTimeout(() => document.getElementById('game-app').classList.remove('wrong-flash'), 300);
+    }
+    document.getElementById('ui-sc').innerText = state.sc;
+    gates.forEach(g => g.el.remove()); 
+    gates = [];
+    spawnGates();
+}
+
+function checkNext() {
+    state.active = false;
+    clearInterval(clock);
+    gates.forEach(g => g.el.remove());
+    gates = [];
+
+    if(curLv < 2) {
+        curLv++;
+        document.getElementById('msg-ui').style.display = 'flex';
+        document.getElementById('msg-title').innerText = "關卡完成！";
+        document.getElementById('msg-desc').innerText = `下一關：${STAGES[curLv].lvName}\n速度將會稍微提升。`;
+        document.getElementById('start-btn').innerText = "進入下一關";
+    } else {
+        showGameOver();
+    }
+}
+
+// 5. 排行榜機制
+function showGameOver() {
+    document.getElementById('msg-ui').style.display = 'flex';
+    document.getElementById('msg-title').innerText = "🏁 駕駛任務完成！";
+    document.getElementById('msg-desc').innerText = `最終累積里程：${state.sc}`;
+    document.getElementById('start-btn').style.display = 'none';
+    document.getElementById('rank-section').style.display = 'block';
+    renderRank();
+}
+
+function saveScore() {
+    const name = document.getElementById('player-name').value.trim() || "匿名駕駛";
+    let history = JSON.parse(localStorage.getItem('health_racing_scores') || "[]");
+    history.push({ name, score: state.sc, date: new Date().toLocaleDateString() });
+    history.sort((a, b) => b.score - a.score);
+    localStorage.setItem('health_racing_scores', JSON.stringify(history.slice(0, 8))); // 只留前8名
+    renderRank();
+    alert("成績已紀錄！");
+}
+
+function renderRank() {
+    let history = JSON.parse(localStorage.getItem('health_racing_scores') || "[]");
+    const container = document.getElementById('rank-content');
+    container.innerHTML = history.length ? 
+        history.map((h, i) => `<div class="rank-item"><span>${i+1}. ${h.name}</span><span>${h.score} km</span></div>`).join('') :
+        "目前尚無排行紀錄";
+}
+
+// 控制感
+window.addEventListener('keydown', e => {
+    if(e.key === 'ArrowLeft' && state.lane > 0) state.lane--;
+    if(e.key === 'ArrowRight' && state.lane < 2) state.lane++;
+    car.style.left = (state.lane * 33.3) + '%';
+});
+</script>
+</body>
+</html>
+
